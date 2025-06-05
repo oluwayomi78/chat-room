@@ -19,11 +19,13 @@
     <input id="messageInput" placeholder="Type a message" />
     <button onclick="sendBtn()">Send</button>
   </div>
+    <div id="toast" class="toast"></div>
 </body>
 <script type="module">
 
   import { initializeApp } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-app.js";
   import { getDatabase, ref, set, onValue, push } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-database.js";
+    import {getMessaging, getToken, onMessage} from "https://www.gstatic.com/firebasejs/11.8.1/firebase-messaging.js";
   
 
   
@@ -40,11 +42,56 @@
   // Initialize Firebase
   const app = initializeApp(firebaseConfig);
   const database = getDatabase(app);
+  const messaging = getMessaging(app);
   
+  Notification.requestPermission().then((permission) => {
+    if (permission === 'granted') {
+      console.log('Notification permission granted.');
+  }
+  });
+getToken(messaging, {vapidKey: "BHu1hd5PgDKcE7cRrB8iWh_R5lWgcY_FErZZR7IE60Baog-8DcDzCxy9-NggMH3kHSrdXSDHqOa_pK11jV_skO4"})
+  .then((currentToken) => {
+    if (currentToken) {
+        console.log("FCM Token:", currentToken);
+      } else {
+        console.log('No registration token available. Request permission to generate one.');
+      }
+    })
+    .catch((err) => {
+      console.log('An error occurred while retrieving token. ', err);
+    });
+    onMessage(messaging, (payload) => {
+  console.log('Message received. ', payload);
+  showNotification(payload.notification.title, payload.notification.body);
+});
+
+    function showNotification(title, body) {
+    if (Notification.permission === 'granted') {
+      new Notification(title, { body });
+    }
+    else{
+      showToast(title, body);
+    }
+  }
+
+    function showToast(title, message) {
+      const toast = document.getElementById('toast');
+      toast.innerHTML = `<strong>${title}</strong><br>${message}`;
+      toast.style.display = 'block';
+      
+      // Hide after 5 seconds
+      setTimeout(() => {
+        toast.style.display = 'none';
+      }, 5000);
+    }
+
+
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Enter')
             sendBtn();
     })
+
+    
   const sendBtn = () => {
     const Input = document.getElementById('messageInput').value;
     const username = document.getElementById('username').value;
@@ -72,21 +119,44 @@
   }
   
   const display = document.getElementById('display');
-const newRef = ref(database, 'message');
+  const newRef = ref(database, 'message');
+
+  let lastMessageKey = null;
+    let currentUsername = "";
+
+  document.getElementById('username').addEventListener('input', (e) => {
+    currentUsername = e.target.value.trim();
+  });
+
 onValue(newRef, (snapshot) => {
   const data = snapshot.val();
-  display.innerHTML = '';
-  for (let key in data) {
-    const info = data[key];
-    display.innerHTML += `
-      <p><strong>${info.username}</strong></p>
-      <p>${info.Input}</p>
-      <p>${info.time}</p>
-      <hr>
-    `;
-  }
-});
-
+    const messageKeys = Object.keys(data).sort((a, b) => {
+        return new Date(data[a].time) - new Date(data[b].time);
+      });
+      display.innerHTML = '';
+      for (let key in data) {
+        const info = data[key];
+        const isCurrentUser = info.username === currentUsername;
+        const userStyle = isCurrentUser ? 'color: green; font-weight: bold;' : 'color: black;';
+        
+        display.innerHTML += `
+        <div style="margin-bottom: 10px; ${userStyle}">
+          <p><strong style="color:white; font-weight: bold;">${info.username}</strong> <small style="color: gray;">${info.time} ${info.date}</small></p>
+          <p style="color: white;">${info.Input}</p>
+          <hr>
+          </div>
+          `;
+          // Show notification for new messages from others
+          if (key !== lastMessageKey && info.username !== currentUsername) {
+            showNotification(`New message from ${info.username}`, info.Input);
+          }
+          if (messageKeys.length > 0) {
+            lastMessageKey = messageKeys[messageKeys.length - 1];
+          }
+        }
+        display.scrollTop = display.scrollHeight;
+        });
+      
 window.sendBtn = sendBtn;
 
 </script>
